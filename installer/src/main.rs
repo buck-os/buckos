@@ -45,6 +45,89 @@ struct Args {
     dry_run: bool,
 }
 
+/// Locate a Wayland display socket inside the given runtime directory.
+///
+/// Prefers the conventional `wayland-0`/`wayland-1` names, then falls back to
+/// scanning for any `wayland-*` socket (ignoring `.lock` files and compositor
+/// helper sockets such as Alacritty's).
+fn find_wayland_socket(runtime_dir: &std::path::Path) -> Option<String> {
+    for name in ["wayland-0", "wayland-1"] {
+        if runtime_dir.join(name).exists() {
+            return Some(name.to_string());
+        }
+    }
+
+    let entries = std::fs::read_dir(runtime_dir).ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("wayland-") && !name.ends_with(".lock") {
+            return Some(name.into_owned());
+        }
+    }
+    None
+}
+
+/// Repair the display environment when running under `sudo`.
+///
+/// `sudo` mangles the Wayland environment in session-dependent ways: it may drop
+/// `WAYLAND_DISPLAY`, and it commonly resets `XDG_RUNTIME_DIR` to root's
+/// directory (or drops it) while leaving `DISPLAY` pointing at an Xwayland
+/// server we have no auth cookie for. Any of these makes winit's Wayland backend
+/// fail to find the compositor socket and fall back to X11, which then dies with
+/// "Failed to open connection to X server".
+///
+/// To make `sudo ./buckos-installer` work on a Wayland session (e.g. sway), we
+/// rebuild the invoking user's Wayland environment from `SUDO_UID`: point
+/// `XDG_RUNTIME_DIR` at `/run/user/<uid>`, locate the real compositor socket,
+/// and drop `DISPLAY` so winit/eframe commit to the Wayland backend.
+fn repair_display_environment() {
+    use std::env;
+    use std::path::PathBuf;
+
+    if unsafe { libc::geteuid() } != 0 {
+        return;
+    }
+
+    // Without SUDO_UID we can't know the invoking user's runtime dir (e.g. a
+    // real root login). Leave the environment untouched.
+    let Some(uid) = env::var("SUDO_UID")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+    else {
+        return;
+    };
+
+    // /run/user/<uid> is the canonical runtime dir for the invoking user; an
+    // inherited XDG_RUNTIME_DIR under sudo often points at the wrong place.
+    let runtime_dir = PathBuf::from(format!("/run/user/{uid}"));
+    if !runtime_dir.is_dir() {
+        return;
+    }
+
+    // Trust an inherited WAYLAND_DISPLAY only if its socket actually exists in
+    // the runtime dir; otherwise discover the real one.
+    let socket = match env::var("WAYLAND_DISPLAY") {
+        Ok(name) if runtime_dir.join(&name).exists() => Some(name),
+        _ => find_wayland_socket(&runtime_dir),
+    };
+
+    let Some(socket) = socket else {
+        return;
+    };
+
+    tracing::info!(
+        "Reconstructing Wayland environment for uid {uid}: XDG_RUNTIME_DIR={}, WAYLAND_DISPLAY={}",
+        runtime_dir.display(),
+        socket
+    );
+    env::set_var("XDG_RUNTIME_DIR", &runtime_dir);
+    env::set_var("WAYLAND_DISPLAY", &socket);
+    // The inherited DISPLAY points at an Xwayland server we can't authenticate
+    // to; removing it forces winit/eframe onto the Wayland backend.
+    env::remove_var("DISPLAY");
+}
+
 /// Check that we have the necessary environment variables to connect to a display server.
 /// This is especially important when running with sudo.
 fn check_display_environment() -> Result<()> {
@@ -57,6 +140,9 @@ fn check_display_environment() -> Result<()> {
         // Not running as root, environment should be fine
         return Ok(());
     }
+
+    // Attempt to reconstruct a stripped Wayland environment before checking.
+    repair_display_environment();
 
     // Running as root - check for necessary environment variables
     let has_wayland = env::var("WAYLAND_DISPLAY").is_ok();
