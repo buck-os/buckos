@@ -9,7 +9,7 @@ use crate::system;
 use crate::types::{
     AudioSubsystem, DesktopEnvironment, DiskInfo, DiskLayoutPreset, EncryptionType, FilesystemType,
     HandheldDevice, HardwareInfo, HardwarePackageSuggestion, InstallConfig, InstallProfile,
-    InstallProgress, InstallStep, KernelChannel, SystemLimitsConfig,
+    InstallProgress, InstallSource, InstallStep, KernelChannel, SystemLimitsConfig,
 };
 
 /// Main installer application state
@@ -146,6 +146,7 @@ impl InstallerApp {
         target: String,
         dry_run: bool,
         buckos_build_path: PathBuf,
+        install_source: Option<InstallSource>,
     ) -> Self {
         let available_disks = system::get_available_disks().unwrap_or_default();
         let system_info = system::get_system_info();
@@ -154,6 +155,7 @@ impl InstallerApp {
             target_root: PathBuf::from(target),
             buckos_build_path,
             dry_run,
+            install_source: install_source.unwrap_or_default(),
             ..Default::default()
         };
 

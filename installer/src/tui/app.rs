@@ -23,8 +23,8 @@ use ratatui::{
 use crate::types::{
     AudioSubsystem, BootloaderType, DesktopEnvironment, DiskInfo, DiskLayoutPreset, EncryptionType,
     FilesystemType, HandheldDevice, HardwareInfo, HardwarePackageSuggestion, InitSystem,
-    InstallConfig, InstallProfile, InstallProgress, InstallStep, KernelChannel, SystemLimitsConfig,
-    SystemTuningProfile, UserConfig,
+    InstallConfig, InstallProfile, InstallProgress, InstallSource, InstallStep, KernelChannel,
+    SystemLimitsConfig, SystemTuningProfile, UserConfig,
 };
 use crate::{disk, install, system};
 
@@ -249,7 +249,12 @@ impl Default for UiState {
 }
 
 impl TuiApp {
-    pub fn new(target: String, dry_run: bool, buckos_build_path: PathBuf) -> Self {
+    pub fn new(
+        target: String,
+        dry_run: bool,
+        buckos_build_path: PathBuf,
+        install_source: Option<InstallSource>,
+    ) -> Self {
         let available_disks = system::get_available_disks().unwrap_or_default();
         let system_info = system::get_system_info();
 
@@ -257,6 +262,7 @@ impl TuiApp {
             target_root: PathBuf::from(target),
             buckos_build_path,
             dry_run,
+            install_source: install_source.unwrap_or_default(),
             ..Default::default()
         };
 
@@ -2547,7 +2553,12 @@ impl TuiApp {
 }
 
 /// Run the TUI installer
-pub fn run_tui_installer(target: String, dry_run: bool, buckos_build_path: PathBuf) -> Result<()> {
+pub fn run_tui_installer(
+    target: String,
+    dry_run: bool,
+    buckos_build_path: PathBuf,
+    install_source: Option<InstallSource>,
+) -> Result<()> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -2556,7 +2567,7 @@ pub fn run_tui_installer(target: String, dry_run: bool, buckos_build_path: PathB
     let mut terminal = Terminal::new(backend)?;
 
     // Create app and run
-    let mut app = TuiApp::new(target, dry_run, buckos_build_path);
+    let mut app = TuiApp::new(target, dry_run, buckos_build_path, install_source);
 
     // Initialize focus for first step
     app.ui.focus = FocusField::List;
