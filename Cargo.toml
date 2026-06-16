@@ -9,6 +9,7 @@ members = [
     "model",
     "package",
     "tools",
+    "update",
     "web",
 ]
 resolver = "2"
@@ -30,6 +31,7 @@ buckos-mcp = { version = "0.0.1", path = "mcp" }
 buckos-model = { version = "0.0.1", path = "model" }
 buckos-package = { version = "0.0.1", path = "package" }
 buckos-tools = { version = "0.0.1", path = "tools" }
+buckos-update = { version = "0.0.1", path = "update" }
 buckos-web = { version = "0.0.1", path = "web" }
 
 # Common dependencies

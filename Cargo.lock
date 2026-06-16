@@ -933,6 +933,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "buckos-update"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "clap 4.5.53",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "buckos-web"
 version = "0.0.1"
 dependencies = [
