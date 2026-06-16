@@ -15,6 +15,8 @@
 //! by the QEMU update-cycle test (SPEC-006 P6); the pure parsing/policy helpers
 //! are unit-tested below.
 
+pub mod install;
+
 use anyhow::{bail, Context, Result};
 use std::path::PathBuf;
 use std::process::Command;
@@ -370,7 +372,7 @@ fn section_verifies(section: &str) -> bool {
                 return true;
             }
         }
-        if l.starts_with("verification-file") || l.starts_with("verification-key") {
+        if l.starts_with("verification-") {
             return true;
         }
     }

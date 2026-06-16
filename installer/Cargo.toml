@@ -56,6 +56,8 @@ tempfile = "3.0"
 # Reuse buckos components
 buckos-config = { workspace = true }
 buckos-package = { workspace = true }
+# Shared ostree install/update operations (SPEC-006 §5.5)
+buckos-update = { workspace = true }
 
 [features]
 default = []

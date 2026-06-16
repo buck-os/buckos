@@ -1213,6 +1213,32 @@ pub struct LocaleConfig {
     pub keyboard: String,
 }
 
+/// Where the installed system's root comes from.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum InstallSource {
+    /// Build a rootfs from source with Buck2 and lay it down (default).
+    SourceBuild,
+    /// Deploy a signed ostree image pulled from a channel (SPEC-006 §5.5).
+    OstreeImage {
+        /// Channel base URL (e.g. `https://repo.buckos.org/ostree`).
+        channel_url: String,
+        /// Channel ref to deploy (e.g. `buckos/x86_64/stable`).
+        branch: String,
+    },
+}
+
+impl Default for InstallSource {
+    fn default() -> Self {
+        InstallSource::SourceBuild
+    }
+}
+
+impl InstallSource {
+    pub fn is_ostree_image(&self) -> bool {
+        matches!(self, InstallSource::OstreeImage { .. })
+    }
+}
+
 /// Complete installation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstallConfig {
@@ -1258,6 +1284,10 @@ pub struct InstallConfig {
     pub extra_packages: Vec<String>,
     /// System limits and tuning configuration
     pub system_limits: SystemLimitsConfig,
+    /// Where the root comes from: a source build (default) or a signed ostree
+    /// image (SPEC-006 §5.5).
+    #[serde(default)]
+    pub install_source: InstallSource,
     /// Dry run mode
     pub dry_run: bool,
 }
@@ -1303,6 +1333,7 @@ impl Default for InstallConfig {
             kernel_config_fragment: None,
             extra_packages: Vec::new(),
             system_limits: SystemLimitsConfig::default(),
+            install_source: InstallSource::default(),
             dry_run: false,
         }
     }
