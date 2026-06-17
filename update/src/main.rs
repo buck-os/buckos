@@ -82,7 +82,11 @@ fn main() -> Result<()> {
         Command::Check => match ostree.check()? {
             CheckResult::UpToDate { commit } => println!("up to date ({})", short(&commit)),
             CheckResult::UpdateAvailable { current, candidate } => {
-                println!("update available: {} -> {}", short(&current), short(&candidate))
+                println!(
+                    "update available: {} -> {}",
+                    short(&current),
+                    short(&candidate)
+                )
             }
         },
         Command::Pull => ostree.pull()?,

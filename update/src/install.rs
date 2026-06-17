@@ -61,7 +61,10 @@ impl ImageInstall {
         log("Initializing ostree sysroot");
         self.run_ostree(&init_fs_args(&self.target))?;
 
-        log(&format!("Adding signature-verified remote '{}'", self.remote));
+        log(&format!(
+            "Adding signature-verified remote '{}'",
+            self.remote
+        ));
         self.run_ostree(&remote_add_args(
             &self.repo(),
             &self.remote,
@@ -69,10 +72,7 @@ impl ImageInstall {
             self.pubkey.as_deref(),
         ))?;
 
-        log(&format!(
-            "Pulling {} (signature-verified)",
-            self.refspec()
-        ));
+        log(&format!("Pulling {} (signature-verified)", self.refspec()));
         self.run_ostree(&pull_args(&self.repo(), &self.remote, &self.branch))?;
 
         log(&format!("Initializing stateroot '{}'", self.os));
@@ -174,7 +174,12 @@ mod tests {
     #[test]
     fn remote_add_always_verifies() {
         // The SPEC-007 invariant: a remote is never created without verification.
-        let a = remote_add_args(Path::new("/mnt/ostree/repo"), "buckos", "https://x/ostree", None);
+        let a = remote_add_args(
+            Path::new("/mnt/ostree/repo"),
+            "buckos",
+            "https://x/ostree",
+            None,
+        );
         assert!(a.iter().any(|s| s == "--set=sign-verify=true"));
         assert!(a.contains(&"buckos".to_string()));
         assert!(a.contains(&"https://x/ostree".to_string()));
@@ -211,7 +216,11 @@ mod tests {
 
     #[test]
     fn pull_targets_repo_remote_branch() {
-        let a = pull_args(Path::new("/mnt/ostree/repo"), "buckos", "buckos/x86_64/stable");
+        let a = pull_args(
+            Path::new("/mnt/ostree/repo"),
+            "buckos",
+            "buckos/x86_64/stable",
+        );
         assert_eq!(
             a,
             [

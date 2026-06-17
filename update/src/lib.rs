@@ -260,13 +260,9 @@ impl Ostree {
     /// after the booted one; it is already local and was verified when pulled).
     pub fn rollback(&self) -> Result<()> {
         let status = self.admin_capture(&["status".to_string()])?;
-        let prior = parse_prior_checksum(&status)
-            .context("no previous deployment to roll back to")?;
-        self.admin_inherit(&[
-            "deploy".to_string(),
-            format!("--os={}", self.cfg.os),
-            prior,
-        ])
+        let prior =
+            parse_prior_checksum(&status).context("no previous deployment to roll back to")?;
+        self.admin_inherit(&["deploy".to_string(), format!("--os={}", self.cfg.os), prior])
     }
 
     /// Prune old, undeployed commits (`ostree admin cleanup`).
@@ -454,7 +450,9 @@ sign-verify=true
 
     #[test]
     fn verify_policy_accepts_verification_file_and_rejects_lookalikes() {
-        assert!(section_verifies("verification-file=/etc/ostree/keys/buckos.ed25519.pub\n"));
+        assert!(section_verifies(
+            "verification-file=/etc/ostree/keys/buckos.ed25519.pub\n"
+        ));
         assert!(!section_verifies("sign-verify-deltas=true\n"));
         assert!(!section_verifies("sign-verify=false\n"));
     }
