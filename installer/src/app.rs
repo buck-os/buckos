@@ -234,32 +234,17 @@ impl InstallerApp {
         }
     }
 
-    /// Whether a step is skipped given the chosen install source. A pre-built
-    /// ostree image bakes in the profile and kernel, so those steps don't apply.
-    fn step_is_skipped(&self, step: InstallStep) -> bool {
-        self.ui_state.use_ostree_image
-            && matches!(
-                step,
-                InstallStep::ProfileSelection | InstallStep::KernelSelection
-            )
-    }
-
-    /// Next step in the wizard, skipping steps that don't apply to the install source.
+    /// Next step in the wizard, skipping steps that don't apply to the install
+    /// source (the skip rule lives on InstallStep, shared with the TUI).
     fn next_step(&self) -> Option<InstallStep> {
-        let mut step = self.current_step.next()?;
-        while self.step_is_skipped(step) {
-            step = step.next()?;
-        }
-        Some(step)
+        self.current_step
+            .next_applicable(self.ui_state.use_ostree_image)
     }
 
     /// Previous step in the wizard, skipping steps that don't apply to the install source.
     fn prev_step(&self) -> Option<InstallStep> {
-        let mut step = self.current_step.prev()?;
-        while self.step_is_skipped(step) {
-            step = step.prev()?;
-        }
-        Some(step)
+        self.current_step
+            .prev_applicable(self.ui_state.use_ostree_image)
     }
 
     fn can_proceed(&self) -> bool {

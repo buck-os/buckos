@@ -1433,6 +1433,36 @@ impl InstallStep {
     pub fn total_steps() -> usize {
         14
     }
+
+    /// Whether this step is skipped for a pre-built ostree image install: the
+    /// image bakes in the profile and kernel, so those steps don't apply. This
+    /// is the single source of truth both the GUI and TUI wizards navigate by.
+    pub fn skipped_for_ostree_image(&self, use_ostree_image: bool) -> bool {
+        use_ostree_image
+            && matches!(
+                self,
+                InstallStep::ProfileSelection | InstallStep::KernelSelection
+            )
+    }
+
+    /// Next step that applies to the chosen install source, skipping any that
+    /// don't (profile/kernel for a pre-built image).
+    pub fn next_applicable(&self, use_ostree_image: bool) -> Option<InstallStep> {
+        let mut step = self.next()?;
+        while step.skipped_for_ostree_image(use_ostree_image) {
+            step = step.next()?;
+        }
+        Some(step)
+    }
+
+    /// Previous step that applies to the chosen install source.
+    pub fn prev_applicable(&self, use_ostree_image: bool) -> Option<InstallStep> {
+        let mut step = self.prev()?;
+        while step.skipped_for_ostree_image(use_ostree_image) {
+            step = step.prev()?;
+        }
+        Some(step)
+    }
 }
 
 /// Disk information from system
@@ -1527,5 +1557,71 @@ impl InstallProgress {
         }
 
         self.operation = new_operation;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InstallStep;
+
+    // A normal source build visits every step: nothing is skipped, so it is the
+    // full linear next() chain.
+    #[test]
+    fn source_build_visits_every_step() {
+        let mut step = InstallStep::Welcome;
+        let mut seen = vec![step];
+        while let Some(next) = step.next_applicable(false) {
+            seen.push(next);
+            step = next;
+        }
+        assert_eq!(seen.len(), InstallStep::total_steps());
+        assert!(seen.contains(&InstallStep::ProfileSelection));
+        assert!(seen.contains(&InstallStep::KernelSelection));
+    }
+
+    // A pre-built ostree image bakes in the profile + kernel, so those two steps
+    // are skipped in both directions — and only those two.
+    #[test]
+    fn ostree_image_skips_profile_and_kernel() {
+        assert!(InstallStep::ProfileSelection.skipped_for_ostree_image(true));
+        assert!(InstallStep::KernelSelection.skipped_for_ostree_image(true));
+        assert!(!InstallStep::ProfileSelection.skipped_for_ostree_image(false));
+        assert!(!InstallStep::HardwareDetection.skipped_for_ostree_image(true));
+        assert!(!InstallStep::DiskSetup.skipped_for_ostree_image(true));
+
+        // Forward: HardwareDetection jumps straight past profile/kernel to DiskSetup.
+        assert_eq!(
+            InstallStep::HardwareDetection.next_applicable(true),
+            Some(InstallStep::DiskSetup)
+        );
+        // Back: DiskSetup returns to HardwareDetection.
+        assert_eq!(
+            InstallStep::DiskSetup.prev_applicable(true),
+            Some(InstallStep::HardwareDetection)
+        );
+        // The skipped steps never appear when walking the image path.
+        let mut step = InstallStep::Welcome;
+        while let Some(next) = step.next_applicable(true) {
+            assert!(next != InstallStep::ProfileSelection && next != InstallStep::KernelSelection);
+            step = next;
+        }
+    }
+
+    // The Install Source step sits right after Welcome, before hardware/profile,
+    // for both install sources.
+    #[test]
+    fn install_source_is_second_step() {
+        assert_eq!(
+            InstallStep::Welcome.next(),
+            Some(InstallStep::InstallSource)
+        );
+        assert_eq!(
+            InstallStep::InstallSource.next_applicable(false),
+            Some(InstallStep::HardwareDetection)
+        );
+        assert_eq!(
+            InstallStep::InstallSource.next_applicable(true),
+            Some(InstallStep::HardwareDetection)
+        );
     }
 }
