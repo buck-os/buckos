@@ -820,6 +820,7 @@ dependencies = [
  "anyhow",
  "buckos-config",
  "buckos-package",
+ "buckos-update",
  "clap 4.5.53",
  "console",
  "crossterm",
@@ -930,6 +931,16 @@ dependencies = [
  "clap 4.5.53",
  "console",
  "sysinfo 0.31.4",
+]
+
+[[package]]
+name = "buckos-update"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "clap 4.5.53",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

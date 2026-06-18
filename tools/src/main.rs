@@ -617,7 +617,7 @@ fn cmd_ps(args: PsArgs) -> Result<(), String> {
 
     // Sort based on argument
     match args.sort.as_str() {
-        "mem" => processes.sort_by(|a, b| b.1.memory().cmp(&a.1.memory())),
+        "mem" => processes.sort_by_key(|b| std::cmp::Reverse(b.1.memory())),
         "pid" => processes.sort_by(|a, b| a.0.cmp(b.0)),
         _ => processes.sort_by(|a, b| {
             b.1.cpu_usage()

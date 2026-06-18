@@ -87,7 +87,7 @@ fn bench_cache_operations(c: &mut Criterion) {
 fn bench_cache_compression(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_compression");
 
-    let temp_dir = TempDir::new().unwrap();
+    let _temp_dir = TempDir::new().unwrap();
 
     for size in [10 * 1024, 100 * 1024, 1024 * 1024].iter() {
         let test_data = vec![0u8; *size];
@@ -145,7 +145,7 @@ fn bench_cache_compression(c: &mut Criterion) {
 fn bench_cache_file_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_file_ops");
 
-    let temp_dir = TempDir::new().unwrap();
+    let _temp_dir = TempDir::new().unwrap();
 
     for file_count in [10, 50, 100].iter() {
         group.bench_with_input(
@@ -193,7 +193,7 @@ fn bench_cache_file_operations(c: &mut Criterion) {
 fn bench_cache_tar_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("cache_tar");
 
-    let temp_dir = TempDir::new().unwrap();
+    let _temp_dir = TempDir::new().unwrap();
 
     // Create a test archive
     for file_count in [10, 50, 100].iter() {

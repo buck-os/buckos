@@ -1,0 +1,22 @@
+[package]
+name = "buckos-update"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "Atomic update agent for BuckOS (ostree): status, check, pull, deploy, rollback, cleanup"
+repository.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "buckos-update"
+path = "src/main.rs"
+
+[lib]
+name = "buckos_update"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap = { workspace = true }
+tracing.workspace = true
+tracing-subscriber.workspace = true

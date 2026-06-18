@@ -17,12 +17,17 @@ fn create_test_config() -> (Config, TempDir) {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let temp_path = temp_dir.path();
 
+    // Dummy buck2 so PackageManager::new() succeeds even when buck2 isn't
+    // installed on the host (e.g. CI). BuckIntegration only checks `.exists()`.
+    let buck_path = temp_path.join("buck2");
+    std::fs::write(&buck_path, b"#!/bin/sh\nexit 0\n").expect("write dummy buck2");
+
     let config = Config {
         root: temp_path.join("root"),
         db_path: temp_path.join("db"),
         cache_dir: temp_path.join("cache"),
         buck_repo: temp_path.join("repo"),
-        buck_path: PathBuf::from("/usr/bin/buck2"),
+        buck_path,
         parallelism: 2,
         repositories: vec![RepositoryConfig {
             name: "test".to_string(),
@@ -75,8 +80,10 @@ mod config_tests {
 
     #[test]
     fn test_config_system_path_custom_root() {
-        let mut config = Config::default();
-        config.root = PathBuf::from("/mnt/newroot");
+        let config = Config {
+            root: PathBuf::from("/mnt/newroot"),
+            ..Default::default()
+        };
         let path = config.system_path("/etc/passwd");
         assert_eq!(path, PathBuf::from("/mnt/newroot/etc/passwd"));
     }
@@ -413,9 +420,9 @@ mod resolve_operations {
         let opts = InstallOptions::default();
         let result = pm.resolve_packages(&packages, &opts).await;
         // Should handle gracefully (empty or error)
-        match result {
-            Ok(resolution) => assert!(resolution.packages.is_empty()),
-            Err(_) => (), // Error is also acceptable
+        // Err is also acceptable
+        if let Ok(resolution) = result {
+            assert!(resolution.packages.is_empty());
         }
     }
 }

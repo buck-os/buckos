@@ -369,6 +369,6 @@ dev-vcs/git
 
         // System set is now empty by default - packages loaded from package_sets.bzl
         assert_eq!(system.name, "system");
-        assert_eq!(system.is_system, true);
+        assert!(system.is_system);
     }
 }

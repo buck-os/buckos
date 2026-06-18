@@ -76,6 +76,117 @@ pub fn render_welcome(ui: &mut Ui, system_info: &SystemInfo) {
     });
 }
 
+/// Render the install source step.
+///
+/// Lets the user pick between building the system from source (the default,
+/// full wizard) and deploying a signed, pre-built ostree image (SPEC-006 §5.5).
+/// The image path is a shorter workflow: the profile, kernel, and related
+/// choices are baked into the image, so those steps are skipped.
+pub fn render_install_source(
+    ui: &mut Ui,
+    use_ostree_image: &mut bool,
+    channel_url: &mut String,
+    branch: &mut String,
+) {
+    ui.label("Choose how the system root is created on this machine.");
+
+    ui.add_space(16.0);
+
+    // Two mutually-exclusive modes, modelled as a selectable list.
+    let source_selected = !*use_ostree_image;
+    if ui
+        .selectable_label(source_selected, RichText::new("Build from source").strong())
+        .clicked()
+    {
+        *use_ostree_image = false;
+    }
+    ui.indent("source_build_desc", |ui| {
+        ui.label(
+            RichText::new(
+                "Compile a rootfs from source with Buck2, tailored to the profile, \
+                 kernel, and hardware you select in the following steps. Most flexible, \
+                 but the longest install.",
+            )
+            .small()
+            .weak(),
+        );
+    });
+
+    ui.add_space(8.0);
+
+    let image_selected = *use_ostree_image;
+    if ui
+        .selectable_label(
+            image_selected,
+            RichText::new("Install pre-built image").strong(),
+        )
+        .clicked()
+    {
+        *use_ostree_image = true;
+    }
+    ui.indent("ostree_image_desc", |ui| {
+        ui.label(
+            RichText::new(
+                "Deploy a signed, pre-built ostree image from a release channel. \
+                 Much faster — the profile and kernel are already baked in, so those \
+                 steps are skipped.",
+            )
+            .small()
+            .weak(),
+        );
+    });
+
+    // Channel configuration only matters for the image path.
+    if *use_ostree_image {
+        ui.add_space(16.0);
+        ui.separator();
+        ui.add_space(8.0);
+
+        ui.label(RichText::new("Channel").strong());
+        ui.indent("ostree_channel", |ui| {
+            egui::Grid::new("ostree_channel_grid")
+                .num_columns(2)
+                .spacing([10.0, 4.0])
+                .show(ui, |ui| {
+                    ui.label("Channel URL:");
+                    ui.add(
+                        egui::TextEdit::singleline(channel_url)
+                            .hint_text("https://repo.buckos.org/ostree")
+                            .desired_width(360.0),
+                    );
+                    ui.end_row();
+
+                    ui.label("Ref:");
+                    ui.add(
+                        egui::TextEdit::singleline(branch)
+                            .hint_text("buckos/x86_64/stable")
+                            .desired_width(360.0),
+                    );
+                    ui.end_row();
+                });
+
+            if channel_url.trim().is_empty() {
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new("A channel URL is required to install a pre-built image.")
+                        .color(egui::Color32::YELLOW)
+                        .small(),
+                );
+            }
+        });
+
+        ui.add_space(8.0);
+        ui.label(
+            RichText::new(
+                "Images are signature-verified against the trusted release key; the pull \
+                 fails closed if no key is present.",
+            )
+            .small()
+            .weak(),
+        );
+    }
+}
+
 /// Render the hardware detection step
 pub fn render_hardware_detection(
     ui: &mut Ui,
@@ -262,10 +373,26 @@ pub fn render_disk_setup(
 
         // Filesystem options as compact dropdown
         let filesystem_options = [
-            (crate::types::FilesystemType::Ext4, "ext4", "Standard journaling filesystem (recommended)"),
-            (crate::types::FilesystemType::Btrfs, "btrfs", "Advanced copy-on-write with snapshots"),
-            (crate::types::FilesystemType::Xfs, "xfs", "High-performance journaling filesystem"),
-            (crate::types::FilesystemType::F2fs, "f2fs", "Flash-Friendly File System (for SSDs)"),
+            (
+                crate::types::FilesystemType::Ext4,
+                "ext4",
+                "Standard journaling filesystem (recommended)",
+            ),
+            (
+                crate::types::FilesystemType::Btrfs,
+                "btrfs",
+                "Advanced copy-on-write with snapshots",
+            ),
+            (
+                crate::types::FilesystemType::Xfs,
+                "xfs",
+                "High-performance journaling filesystem",
+            ),
+            (
+                crate::types::FilesystemType::F2fs,
+                "f2fs",
+                "Flash-Friendly File System (for SSDs)",
+            ),
         ];
 
         let current_fs_name = filesystem_options
@@ -806,7 +933,7 @@ pub fn render_profile_selection(
 
             // 2-column grid for desktop environments
             let all_des = DesktopEnvironment::all();
-            let half = (all_des.len() + 1) / 2;
+            let half = all_des.len().div_ceil(2);
             ui.columns(2, |cols| {
                 for (i, de) in all_des.iter().enumerate() {
                     let col = if i < half { &mut cols[0] } else { &mut cols[1] };
@@ -839,7 +966,7 @@ pub fn render_profile_selection(
 
             // 2-column grid for handheld devices
             let all_devices = HandheldDevice::all();
-            let half = (all_devices.len() + 1) / 2;
+            let half = all_devices.len().div_ceil(2);
             ui.columns(2, |cols| {
                 for (i, device) in all_devices.iter().enumerate() {
                     let col = if i < half { &mut cols[0] } else { &mut cols[1] };
@@ -854,7 +981,11 @@ pub fn render_profile_selection(
 
             ui.add_space(4.0);
             ui.indent("handheld_selected_desc", |ui| {
-                ui.label(RichText::new(selected_handheld.description()).small().weak());
+                ui.label(
+                    RichText::new(selected_handheld.description())
+                        .small()
+                        .weak(),
+                );
             });
 
             *profile = InstallProfile::Handheld(selected_handheld.clone());
@@ -969,15 +1100,27 @@ pub fn render_kernel_selection(
         match kernel_channel {
             KernelChannel::LTS => {
                 cols[0].label(RichText::new("LTS Notes:").small().strong());
-                cols[0].label(RichText::new("Recommended for servers. Max stability.").small().weak());
+                cols[0].label(
+                    RichText::new("Recommended for servers. Max stability.")
+                        .small()
+                        .weak(),
+                );
             }
             KernelChannel::Stable => {
                 cols[0].label(RichText::new("Stable Notes:").small().strong());
-                cols[0].label(RichText::new("Best for most desktops. Good balance.").small().weak());
+                cols[0].label(
+                    RichText::new("Best for most desktops. Good balance.")
+                        .small()
+                        .weak(),
+                );
             }
             KernelChannel::Mainline => {
                 cols[0].label(RichText::new("Mainline Notes:").small().strong());
-                cols[0].label(RichText::new("Cutting-edge. Best new hardware support.").small().weak());
+                cols[0].label(
+                    RichText::new("Cutting-edge. Best new hardware support.")
+                        .small()
+                        .weak(),
+                );
             }
         }
 
@@ -1308,23 +1451,46 @@ pub fn render_summary(
                 ui.label(config.target_root.display().to_string());
                 ui.end_row();
 
-                // Profile details
-                ui.label(RichText::new("Profile:").strong());
-                let profile_str = match &config.profile {
-                    InstallProfile::Desktop(de) => format!("Desktop ({})", de.name()),
-                    InstallProfile::Handheld(device) => format!("Handheld ({})", device.name()),
-                    InstallProfile::Server => "Server".to_string(),
-                    InstallProfile::Minimal => "Minimal".to_string(),
-                    InstallProfile::Custom => "Custom".to_string(),
-                };
-                ui.label(profile_str);
+                // Install source
+                ui.label(RichText::new("Source:").strong());
+                match &config.install_source {
+                    crate::types::InstallSource::SourceBuild => {
+                        ui.label("Build from source");
+                    }
+                    crate::types::InstallSource::OstreeImage {
+                        channel_url,
+                        branch,
+                    } => {
+                        ui.label(format!("Pre-built image ({} @ {})", channel_url, branch));
+                    }
+                }
                 ui.end_row();
 
+                // Profile and kernel are baked into a pre-built image, so only
+                // show them for source builds.
+                let is_source_build = !config.install_source.is_ostree_image();
+
+                // Profile details
+                if is_source_build {
+                    ui.label(RichText::new("Profile:").strong());
+                    let profile_str = match &config.profile {
+                        InstallProfile::Desktop(de) => format!("Desktop ({})", de.name()),
+                        InstallProfile::Handheld(device) => format!("Handheld ({})", device.name()),
+                        InstallProfile::Server => "Server".to_string(),
+                        InstallProfile::Minimal => "Minimal".to_string(),
+                        InstallProfile::Custom => "Custom".to_string(),
+                    };
+                    ui.label(profile_str);
+                    ui.end_row();
+                }
+
                 // Audio subsystem for desktop/handheld
-                if matches!(
-                    config.profile,
-                    InstallProfile::Desktop(_) | InstallProfile::Handheld(_)
-                ) {
+                if is_source_build
+                    && matches!(
+                        config.profile,
+                        InstallProfile::Desktop(_) | InstallProfile::Handheld(_)
+                    )
+                {
                     ui.label(RichText::new("Audio:").strong());
                     ui.label(config.audio_subsystem.name());
                     ui.end_row();
@@ -1399,26 +1565,37 @@ pub fn render_summary(
         ui.separator();
         ui.add_space(8.0);
 
-        ui.label(RichText::new("Package Sets to Install:").strong());
-        ui.indent("packages", |ui| {
-            for pkg_set in config.profile.package_sets() {
-                ui.label(format!("• {}", pkg_set));
-            }
-            // Add audio subsystem package set
-            if matches!(
-                config.profile,
-                InstallProfile::Desktop(_) | InstallProfile::Handheld(_)
-            ) {
-                ui.label(format!("• {}", config.audio_subsystem.package_set()));
-            }
-        });
+        if config.install_source.is_ostree_image() {
+            ui.label(RichText::new("Package Sets to Install:").strong());
+            ui.indent("packages", |ui| {
+                ui.label(
+                    RichText::new("Provided by the pre-built image")
+                        .small()
+                        .weak(),
+                );
+            });
+        } else {
+            ui.label(RichText::new("Package Sets to Install:").strong());
+            ui.indent("packages", |ui| {
+                for pkg_set in config.profile.package_sets() {
+                    ui.label(format!("• {}", pkg_set));
+                }
+                // Add audio subsystem package set
+                if matches!(
+                    config.profile,
+                    InstallProfile::Desktop(_) | InstallProfile::Handheld(_)
+                ) {
+                    ui.label(format!("• {}", config.audio_subsystem.package_set()));
+                }
+            });
 
-        ui.add_space(4.0);
-        ui.label(
-            RichText::new("Hardware-specific drivers will be automatically included")
-                .small()
-                .weak(),
-        );
+            ui.add_space(4.0);
+            ui.label(
+                RichText::new("Hardware-specific drivers will be automatically included")
+                    .small()
+                    .weak(),
+            );
+        }
 
         ui.add_space(16.0);
         ui.separator();

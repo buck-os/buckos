@@ -43,6 +43,26 @@ struct Args {
     /// Perform a dry run without making changes
     #[arg(long)]
     dry_run: bool,
+
+    /// Install a signed ostree image from this channel URL instead of building
+    /// from source (e.g. <https://repo.buckos.org/ostree>).
+    #[arg(long)]
+    ostree_channel: Option<String>,
+
+    /// ostree channel ref to deploy when --ostree-channel is set.
+    #[arg(long, default_value = "buckos/x86_64/stable")]
+    ostree_ref: String,
+}
+
+/// Build the install source from CLI flags: a signed ostree channel when
+/// `--ostree-channel` is given, otherwise the default source build.
+fn ostree_install_source(args: &Args) -> Option<types::InstallSource> {
+    args.ostree_channel
+        .clone()
+        .map(|channel_url| types::InstallSource::OstreeImage {
+            channel_url,
+            branch: args.ostree_ref.clone(),
+        })
 }
 
 /// Locate a Wayland display socket inside the given runtime directory.
@@ -262,6 +282,7 @@ fn run_gui_installer(args: &Args, buckos_build_path: std::path::PathBuf) -> Resu
 
     let target = args.target.clone();
     let dry_run = args.dry_run;
+    let install_source = ostree_install_source(args);
 
     eframe::run_native(
         "BuckOS Installer",
@@ -274,6 +295,7 @@ fn run_gui_installer(args: &Args, buckos_build_path: std::path::PathBuf) -> Resu
                 target,
                 dry_run,
                 buckos_build_path,
+                install_source,
             )))
         }),
     )
@@ -281,7 +303,12 @@ fn run_gui_installer(args: &Args, buckos_build_path: std::path::PathBuf) -> Resu
 }
 
 fn run_text_installer(args: &Args, buckos_build_path: std::path::PathBuf) -> Result<()> {
-    tui::run_tui_installer(args.target.clone(), args.dry_run, buckos_build_path)
+    tui::run_tui_installer(
+        args.target.clone(),
+        args.dry_run,
+        buckos_build_path,
+        ostree_install_source(args),
+    )
 }
 
 fn setup_custom_styles(ctx: &egui::Context) {

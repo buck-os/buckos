@@ -264,7 +264,7 @@ impl Journal {
             .collect();
 
         // Sort by timestamp
-        all_entries.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+        all_entries.sort_by_key(|a| a.timestamp);
 
         match limit {
             Some(n) => all_entries.into_iter().rev().take(n).rev().collect(),

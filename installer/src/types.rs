@@ -1213,6 +1213,27 @@ pub struct LocaleConfig {
     pub keyboard: String,
 }
 
+/// Where the installed system's root comes from.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub enum InstallSource {
+    /// Build a rootfs from source with Buck2 and lay it down (default).
+    #[default]
+    SourceBuild,
+    /// Deploy a signed ostree image pulled from a channel (SPEC-006 §5.5).
+    OstreeImage {
+        /// Channel base URL (e.g. `https://repo.buckos.org/ostree`).
+        channel_url: String,
+        /// Channel ref to deploy (e.g. `buckos/x86_64/stable`).
+        branch: String,
+    },
+}
+
+impl InstallSource {
+    pub fn is_ostree_image(&self) -> bool {
+        matches!(self, InstallSource::OstreeImage { .. })
+    }
+}
+
 /// Complete installation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstallConfig {
@@ -1258,6 +1279,10 @@ pub struct InstallConfig {
     pub extra_packages: Vec<String>,
     /// System limits and tuning configuration
     pub system_limits: SystemLimitsConfig,
+    /// Where the root comes from: a source build (default) or a signed ostree
+    /// image (SPEC-006 §5.5).
+    #[serde(default)]
+    pub install_source: InstallSource,
     /// Dry run mode
     pub dry_run: bool,
 }
@@ -1303,6 +1328,7 @@ impl Default for InstallConfig {
             kernel_config_fragment: None,
             extra_packages: Vec::new(),
             system_limits: SystemLimitsConfig::default(),
+            install_source: InstallSource::default(),
             dry_run: false,
         }
     }
@@ -1312,6 +1338,7 @@ impl Default for InstallConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallStep {
     Welcome,
+    InstallSource,
     HardwareDetection,
     ProfileSelection,
     KernelSelection,
@@ -1330,6 +1357,7 @@ impl InstallStep {
     pub fn title(&self) -> &'static str {
         match self {
             InstallStep::Welcome => "Welcome",
+            InstallStep::InstallSource => "Install Source",
             InstallStep::HardwareDetection => "Hardware Detection",
             InstallStep::ProfileSelection => "Profile Selection",
             InstallStep::KernelSelection => "Kernel Selection",
@@ -1347,7 +1375,8 @@ impl InstallStep {
 
     pub fn next(&self) -> Option<InstallStep> {
         match self {
-            InstallStep::Welcome => Some(InstallStep::HardwareDetection),
+            InstallStep::Welcome => Some(InstallStep::InstallSource),
+            InstallStep::InstallSource => Some(InstallStep::HardwareDetection),
             InstallStep::HardwareDetection => Some(InstallStep::ProfileSelection),
             InstallStep::ProfileSelection => Some(InstallStep::KernelSelection),
             InstallStep::KernelSelection => Some(InstallStep::DiskSetup),
@@ -1366,7 +1395,8 @@ impl InstallStep {
     pub fn prev(&self) -> Option<InstallStep> {
         match self {
             InstallStep::Welcome => None,
-            InstallStep::HardwareDetection => Some(InstallStep::Welcome),
+            InstallStep::InstallSource => Some(InstallStep::Welcome),
+            InstallStep::HardwareDetection => Some(InstallStep::InstallSource),
             InstallStep::ProfileSelection => Some(InstallStep::HardwareDetection),
             InstallStep::KernelSelection => Some(InstallStep::ProfileSelection),
             InstallStep::DiskSetup => Some(InstallStep::KernelSelection),
@@ -1384,23 +1414,24 @@ impl InstallStep {
     pub fn index(&self) -> usize {
         match self {
             InstallStep::Welcome => 0,
-            InstallStep::HardwareDetection => 1,
-            InstallStep::ProfileSelection => 2,
-            InstallStep::KernelSelection => 3,
-            InstallStep::DiskSetup => 4,
-            InstallStep::Bootloader => 5,
-            InstallStep::SystemTuning => 6,
-            InstallStep::UserSetup => 7,
-            InstallStep::NetworkSetup => 8,
-            InstallStep::Timezone => 9,
-            InstallStep::Summary => 10,
-            InstallStep::Installing => 11,
-            InstallStep::Complete => 12,
+            InstallStep::InstallSource => 1,
+            InstallStep::HardwareDetection => 2,
+            InstallStep::ProfileSelection => 3,
+            InstallStep::KernelSelection => 4,
+            InstallStep::DiskSetup => 5,
+            InstallStep::Bootloader => 6,
+            InstallStep::SystemTuning => 7,
+            InstallStep::UserSetup => 8,
+            InstallStep::NetworkSetup => 9,
+            InstallStep::Timezone => 10,
+            InstallStep::Summary => 11,
+            InstallStep::Installing => 12,
+            InstallStep::Complete => 13,
         }
     }
 
     pub fn total_steps() -> usize {
-        13
+        14
     }
 }
 

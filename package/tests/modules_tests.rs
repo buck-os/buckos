@@ -13,12 +13,17 @@ fn create_test_config() -> (Config, TempDir) {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let temp_path = temp_dir.path();
 
+    // Dummy buck2 so PackageManager::new() succeeds even when buck2 isn't
+    // installed on the host (e.g. CI). BuckIntegration only checks `.exists()`.
+    let buck_path = temp_path.join("buck2");
+    std::fs::write(&buck_path, b"#!/bin/sh\nexit 0\n").expect("write dummy buck2");
+
     let config = Config {
         root: temp_path.join("root"),
         db_path: temp_path.join("db"),
         cache_dir: temp_path.join("cache"),
         buck_repo: temp_path.join("repo"),
-        buck_path: PathBuf::from("/usr/bin/buck2"),
+        buck_path,
         parallelism: 2,
         repositories: vec![],
         use_flags: Default::default(),

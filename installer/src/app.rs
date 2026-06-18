@@ -9,7 +9,7 @@ use crate::system;
 use crate::types::{
     AudioSubsystem, DesktopEnvironment, DiskInfo, DiskLayoutPreset, EncryptionType, FilesystemType,
     HandheldDevice, HardwareInfo, HardwarePackageSuggestion, InstallConfig, InstallProfile,
-    InstallProgress, InstallStep, KernelChannel, SystemLimitsConfig,
+    InstallProgress, InstallSource, InstallStep, KernelChannel, SystemLimitsConfig,
 };
 
 /// Main installer application state
@@ -38,6 +38,11 @@ pub struct InstallerApp {
 
 /// Temporary UI state
 struct UiState {
+    // Install source
+    use_ostree_image: bool,
+    ostree_channel_url: String,
+    ostree_ref: String,
+
     // Hardware detection
     hardware_info: HardwareInfo,
     hardware_suggestions: Vec<HardwarePackageSuggestion>,
@@ -102,6 +107,9 @@ struct UiState {
 impl Default for UiState {
     fn default() -> Self {
         Self {
+            use_ostree_image: false,
+            ostree_channel_url: String::new(),
+            ostree_ref: "buckos/x86_64/stable".to_string(),
             hardware_info: HardwareInfo::default(),
             hardware_suggestions: Vec::new(),
             selected_de: DesktopEnvironment::Gnome,
@@ -146,6 +154,7 @@ impl InstallerApp {
         target: String,
         dry_run: bool,
         buckos_build_path: PathBuf,
+        install_source: Option<InstallSource>,
     ) -> Self {
         let available_disks = system::get_available_disks().unwrap_or_default();
         let system_info = system::get_system_info();
@@ -154,6 +163,7 @@ impl InstallerApp {
             target_root: PathBuf::from(target),
             buckos_build_path,
             dry_run,
+            install_source: install_source.unwrap_or_default(),
             ..Default::default()
         };
 
@@ -177,6 +187,17 @@ impl InstallerApp {
             ),
             ..Default::default()
         };
+
+        // Pre-fill the install source UI from config (set via CLI flags, if any).
+        if let InstallSource::OstreeImage {
+            channel_url,
+            branch,
+        } = &config.install_source
+        {
+            ui_state.use_ostree_image = true;
+            ui_state.ostree_channel_url = channel_url.clone();
+            ui_state.ostree_ref = branch.clone();
+        }
 
         // Auto-detect handheld device
         if let Some(device) = system::detect_handheld_device() {
@@ -213,9 +234,42 @@ impl InstallerApp {
         }
     }
 
+    /// Whether a step is skipped given the chosen install source. A pre-built
+    /// ostree image bakes in the profile and kernel, so those steps don't apply.
+    fn step_is_skipped(&self, step: InstallStep) -> bool {
+        self.ui_state.use_ostree_image
+            && matches!(
+                step,
+                InstallStep::ProfileSelection | InstallStep::KernelSelection
+            )
+    }
+
+    /// Next step in the wizard, skipping steps that don't apply to the install source.
+    fn next_step(&self) -> Option<InstallStep> {
+        let mut step = self.current_step.next()?;
+        while self.step_is_skipped(step) {
+            step = step.next()?;
+        }
+        Some(step)
+    }
+
+    /// Previous step in the wizard, skipping steps that don't apply to the install source.
+    fn prev_step(&self) -> Option<InstallStep> {
+        let mut step = self.current_step.prev()?;
+        while self.step_is_skipped(step) {
+            step = step.prev()?;
+        }
+        Some(step)
+    }
+
     fn can_proceed(&self) -> bool {
         match self.current_step {
             InstallStep::Welcome => true,
+            InstallStep::InstallSource => {
+                // A pre-built image needs a channel URL.
+                !self.ui_state.use_ostree_image
+                    || !self.ui_state.ostree_channel_url.trim().is_empty()
+            }
             InstallStep::HardwareDetection => true,
             InstallStep::ProfileSelection => true,
             InstallStep::KernelSelection => true,
@@ -257,6 +311,30 @@ impl InstallerApp {
         self.ui_state.validation_error = None;
 
         match self.current_step {
+            InstallStep::InstallSource => {
+                if self.ui_state.use_ostree_image {
+                    let channel_url = self.ui_state.ostree_channel_url.trim().to_string();
+                    if channel_url.is_empty() {
+                        self.ui_state.validation_error =
+                            Some("A channel URL is required for a pre-built image".to_string());
+                        return false;
+                    }
+                    let branch = {
+                        let r = self.ui_state.ostree_ref.trim();
+                        if r.is_empty() {
+                            "buckos/x86_64/stable".to_string()
+                        } else {
+                            r.to_string()
+                        }
+                    };
+                    self.config.install_source = InstallSource::OstreeImage {
+                        channel_url,
+                        branch,
+                    };
+                } else {
+                    self.config.install_source = InstallSource::SourceBuild;
+                }
+            }
             InstallStep::HardwareDetection => {
                 // Copy hardware info and selected suggestions to config
                 self.config.hardware_info = self.ui_state.hardware_info.clone();
@@ -468,12 +546,12 @@ impl eframe::App for InstallerApp {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 // Back button
-                let can_go_back = self.current_step.prev().is_some();
+                let can_go_back = self.prev_step().is_some();
                 if ui
                     .add_enabled(can_go_back, egui::Button::new("← Back"))
                     .clicked()
                 {
-                    if let Some(prev) = self.current_step.prev() {
+                    if let Some(prev) = self.prev_step() {
                         self.current_step = prev;
                         self.ui_state.validation_error = None;
                     }
@@ -492,7 +570,7 @@ impl eframe::App for InstallerApp {
                         if self.current_step == InstallStep::Complete {
                             std::process::exit(0);
                         } else if self.validate_and_proceed() {
-                            if let Some(next) = self.current_step.next() {
+                            if let Some(next) = self.next_step() {
                                 self.current_step = next;
                                 if self.current_step == InstallStep::Installing {
                                     self.installing = true;
@@ -530,6 +608,12 @@ impl eframe::App for InstallerApp {
             // Render current step
             egui::ScrollArea::vertical().show(ui, |ui| match self.current_step {
                 InstallStep::Welcome => steps::render_welcome(ui, &self.system_info),
+                InstallStep::InstallSource => steps::render_install_source(
+                    ui,
+                    &mut self.ui_state.use_ostree_image,
+                    &mut self.ui_state.ostree_channel_url,
+                    &mut self.ui_state.ostree_ref,
+                ),
                 InstallStep::HardwareDetection => steps::render_hardware_detection(
                     ui,
                     &self.ui_state.hardware_info,

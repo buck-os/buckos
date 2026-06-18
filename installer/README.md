@@ -213,16 +213,24 @@ sudo buckos-installer --buckos-build-path ./buckos-build
 ## Installation Wizard Steps
 
 1. **Welcome** - System information and overview
-2. **Hardware Detection** - Detect hardware and suggest drivers/packages
-3. **Profile Selection** - Choose installation profile and desktop environment
-4. **Disk Setup** - Select disk, partition layout, and encryption
-5. **Bootloader** - Choose bootloader type
-6. **User Setup** - Configure root password and create user accounts
-7. **Network Setup** - Set hostname and network configuration
-8. **Timezone & Locale** - Configure timezone, locale, and keyboard layout
-9. **Summary** - Review settings with confirmation checkboxes
-10. **Installing** - Installation progress
-11. **Complete** - Post-installation instructions
+2. **Install Source** - Build from source (default) or install a signed, pre-built
+   ostree image from a release channel. Choosing the image path skips the Profile
+   and Kernel steps below, since those are baked into the image.
+3. **Hardware Detection** - Detect hardware and suggest drivers/packages
+4. **Profile Selection** - Choose installation profile and desktop environment *(source build only)*
+5. **Kernel Selection** - Choose kernel channel and init system *(source build only)*
+6. **Disk Setup** - Select disk, partition layout, and encryption
+7. **Bootloader** - Choose bootloader type
+8. **System Tuning** - Configure resource limits and sysctl tuning
+9. **User Setup** - Configure root password and create user accounts
+10. **Network Setup** - Set hostname and network configuration
+11. **Timezone & Locale** - Configure timezone, locale, and keyboard layout
+12. **Summary** - Review settings with confirmation checkboxes
+13. **Installing** - Installation progress
+14. **Complete** - Post-installation instructions
+
+The install source can also be selected non-interactively with the
+`--ostree-channel <URL>` and `--ostree-ref <REF>` flags (see `--help`).
 
 ## Manual Installation
 

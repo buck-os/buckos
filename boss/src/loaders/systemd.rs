@@ -5,11 +5,11 @@
 //!
 //! # Supported Directives
 //!
-//! ## [Unit] Section
+//! ## \[Unit\] Section
 //! - Description
 //! - Requires, Wants, Before, After
 //!
-//! ## [Service] Section
+//! ## \[Service\] Section
 //! - Type (simple, forking, oneshot, notify, idle)
 //! - ExecStart, ExecStop, ExecReload
 //! - WorkingDirectory
@@ -21,7 +21,7 @@
 //! - WatchdogSec
 //! - MemoryLimit, CPUQuota, LimitNOFILE, LimitNPROC
 //!
-//! ## [Install] Section
+//! ## \[Install\] Section
 //! - WantedBy, RequiredBy (used to determine if enabled)
 
 use crate::error::{Error, Result};

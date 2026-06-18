@@ -23,8 +23,8 @@ use ratatui::{
 use crate::types::{
     AudioSubsystem, BootloaderType, DesktopEnvironment, DiskInfo, DiskLayoutPreset, EncryptionType,
     FilesystemType, HandheldDevice, HardwareInfo, HardwarePackageSuggestion, InitSystem,
-    InstallConfig, InstallProfile, InstallProgress, InstallStep, KernelChannel, SystemLimitsConfig,
-    SystemTuningProfile, UserConfig,
+    InstallConfig, InstallProfile, InstallProgress, InstallSource, InstallStep, KernelChannel,
+    SystemLimitsConfig, SystemTuningProfile, UserConfig,
 };
 use crate::{disk, install, system};
 
@@ -36,6 +36,10 @@ use super::widgets::{Checkbox, HelpBar, InfoBox, TextInput};
 enum FocusField {
     // Generic
     List,
+    // Install source
+    InstallSourceMode,
+    OstreeChannelUrl,
+    OstreeRef,
     // Profile selection
     ProfileCategory,
     DesktopEnvironment,
@@ -92,6 +96,11 @@ pub struct TuiApp {
 /// UI state for selections and inputs
 #[allow(dead_code)]
 struct UiState {
+    // Install source
+    use_ostree_image: bool,
+    ostree_channel_url: String,
+    ostree_ref: String,
+
     // Hardware detection
     hardware_info: HardwareInfo,
     hardware_suggestions: Vec<HardwarePackageSuggestion>,
@@ -192,6 +201,10 @@ impl Default for UiState {
         tuning_list_state.select(Some(0));
 
         Self {
+            use_ostree_image: false,
+            ostree_channel_url: String::new(),
+            ostree_ref: "buckos/x86_64/stable".to_string(),
+
             hardware_info: HardwareInfo::default(),
             hardware_suggestions: Vec::new(),
             hardware_list_state: ListState::default(),
@@ -249,7 +262,12 @@ impl Default for UiState {
 }
 
 impl TuiApp {
-    pub fn new(target: String, dry_run: bool, buckos_build_path: PathBuf) -> Self {
+    pub fn new(
+        target: String,
+        dry_run: bool,
+        buckos_build_path: PathBuf,
+        install_source: Option<InstallSource>,
+    ) -> Self {
         let available_disks = system::get_available_disks().unwrap_or_default();
         let system_info = system::get_system_info();
 
@@ -257,6 +275,7 @@ impl TuiApp {
             target_root: PathBuf::from(target),
             buckos_build_path,
             dry_run,
+            install_source: install_source.unwrap_or_default(),
             ..Default::default()
         };
 
@@ -295,6 +314,17 @@ impl TuiApp {
             ui.disk_list_state.select(Some(0));
         }
 
+        // Pre-fill install source from config (set via CLI flags, if any).
+        if let InstallSource::OstreeImage {
+            channel_url,
+            branch,
+        } = &config.install_source
+        {
+            ui.use_ostree_image = true;
+            ui.ostree_channel_url = channel_url.clone();
+            ui.ostree_ref = branch.clone();
+        }
+
         Self {
             current_step: InstallStep::Welcome,
             config,
@@ -321,6 +351,7 @@ impl TuiApp {
 
         match self.current_step {
             InstallStep::Welcome => self.handle_welcome_input(key),
+            InstallStep::InstallSource => self.handle_install_source_input(key),
             InstallStep::HardwareDetection => self.handle_hardware_input(key),
             InstallStep::ProfileSelection => self.handle_profile_input(key),
             InstallStep::KernelSelection => self.handle_kernel_input(key),
@@ -336,13 +367,39 @@ impl TuiApp {
         }
     }
 
+    /// Whether a step is skipped given the chosen install source. A pre-built
+    /// ostree image bakes in the profile and kernel, so those steps don't apply.
+    fn step_is_skipped(&self, step: InstallStep) -> bool {
+        self.ui.use_ostree_image
+            && matches!(
+                step,
+                InstallStep::ProfileSelection | InstallStep::KernelSelection
+            )
+    }
+
+    fn next_step(&self) -> Option<InstallStep> {
+        let mut step = self.current_step.next()?;
+        while self.step_is_skipped(step) {
+            step = step.next()?;
+        }
+        Some(step)
+    }
+
+    fn prev_step(&self) -> Option<InstallStep> {
+        let mut step = self.current_step.prev()?;
+        while self.step_is_skipped(step) {
+            step = step.prev()?;
+        }
+        Some(step)
+    }
+
     fn navigate_next(&mut self) {
         self.ui.validation_error = None;
 
         if self.validate_current_step() {
             self.apply_current_step();
 
-            if let Some(next) = self.current_step.next() {
+            if let Some(next) = self.next_step() {
                 self.current_step = next;
 
                 // Start installation if we're moving to Installing step
@@ -354,7 +411,7 @@ impl TuiApp {
     }
 
     fn navigate_back(&mut self) {
-        if let Some(prev) = self.current_step.prev() {
+        if let Some(prev) = self.prev_step() {
             self.current_step = prev;
             self.ui.validation_error = None;
         }
@@ -362,6 +419,14 @@ impl TuiApp {
 
     fn validate_current_step(&mut self) -> bool {
         match self.current_step {
+            InstallStep::InstallSource => {
+                if self.ui.use_ostree_image && self.ui.ostree_channel_url.trim().is_empty() {
+                    self.ui.validation_error =
+                        Some("A channel URL is required for a pre-built image".to_string());
+                    return false;
+                }
+                true
+            }
             InstallStep::DiskSetup => {
                 if self.ui.auto_partition && self.available_disks.is_empty() {
                     self.ui.validation_error =
@@ -430,6 +495,24 @@ impl TuiApp {
 
     fn apply_current_step(&mut self) {
         match self.current_step {
+            InstallStep::InstallSource => {
+                self.config.install_source = if self.ui.use_ostree_image {
+                    let branch = {
+                        let r = self.ui.ostree_ref.trim();
+                        if r.is_empty() {
+                            "buckos/x86_64/stable".to_string()
+                        } else {
+                            r.to_string()
+                        }
+                    };
+                    InstallSource::OstreeImage {
+                        channel_url: self.ui.ostree_channel_url.trim().to_string(),
+                        branch,
+                    }
+                } else {
+                    InstallSource::SourceBuild
+                };
+            }
             InstallStep::HardwareDetection => {
                 self.config.hardware_info = self.ui.hardware_info.clone();
                 self.config.hardware_packages = self.ui.hardware_suggestions.clone();
@@ -599,6 +682,60 @@ impl TuiApp {
     fn handle_welcome_input(&mut self, key: KeyCode) {
         match key {
             KeyCode::Enter | KeyCode::Right => self.navigate_next(),
+            _ => {}
+        }
+    }
+
+    fn handle_install_source_input(&mut self, key: KeyCode) {
+        // Ensure focus starts on the mode selector when entering this step.
+        if !matches!(
+            self.ui.focus,
+            FocusField::InstallSourceMode | FocusField::OstreeChannelUrl | FocusField::OstreeRef
+        ) {
+            self.ui.focus = FocusField::InstallSourceMode;
+        }
+
+        let editing_text = matches!(
+            self.ui.focus,
+            FocusField::OstreeChannelUrl | FocusField::OstreeRef
+        );
+
+        match key {
+            KeyCode::Enter | KeyCode::Right if !editing_text => self.navigate_next(),
+            KeyCode::Left if !editing_text => self.navigate_back(),
+            // Toggle the install mode from the selector.
+            KeyCode::Up | KeyCode::Down | KeyCode::Char(' ')
+                if self.ui.focus == FocusField::InstallSourceMode =>
+            {
+                self.ui.use_ostree_image = !self.ui.use_ostree_image;
+            }
+            KeyCode::Tab => {
+                // Cycle focus: mode -> (channel -> ref ->) mode. Text fields only
+                // apply when installing a pre-built image.
+                self.ui.focus = if self.ui.use_ostree_image {
+                    match self.ui.focus {
+                        FocusField::InstallSourceMode => FocusField::OstreeChannelUrl,
+                        FocusField::OstreeChannelUrl => FocusField::OstreeRef,
+                        _ => FocusField::InstallSourceMode,
+                    }
+                } else {
+                    FocusField::InstallSourceMode
+                };
+            }
+            KeyCode::Char(c) => match self.ui.focus {
+                FocusField::OstreeChannelUrl => self.ui.ostree_channel_url.push(c),
+                FocusField::OstreeRef => self.ui.ostree_ref.push(c),
+                _ => {}
+            },
+            KeyCode::Backspace => match self.ui.focus {
+                FocusField::OstreeChannelUrl => {
+                    self.ui.ostree_channel_url.pop();
+                }
+                FocusField::OstreeRef => {
+                    self.ui.ostree_ref.pop();
+                }
+                _ => self.navigate_back(),
+            },
             _ => {}
         }
     }
@@ -916,7 +1053,7 @@ impl TuiApp {
                     self.navigate_next();
                 }
             }
-            KeyCode::Right => {
+            KeyCode::Right
                 if !matches!(
                     self.ui.focus,
                     FocusField::RootPassword
@@ -925,11 +1062,11 @@ impl TuiApp {
                         | FocusField::FullName
                         | FocusField::UserPassword
                         | FocusField::UserPasswordConfirm
-                ) {
-                    self.navigate_next();
-                }
+                ) =>
+            {
+                self.navigate_next();
             }
-            KeyCode::Left => {
+            KeyCode::Left
                 if !matches!(
                     self.ui.focus,
                     FocusField::RootPassword
@@ -938,9 +1075,9 @@ impl TuiApp {
                         | FocusField::FullName
                         | FocusField::UserPassword
                         | FocusField::UserPasswordConfirm
-                ) {
-                    self.navigate_back();
-                }
+                ) =>
+            {
+                self.navigate_back();
             }
             KeyCode::Tab => {
                 self.ui.focus = match self.ui.focus {
@@ -955,10 +1092,8 @@ impl TuiApp {
                     _ => FocusField::RootPassword,
                 };
             }
-            KeyCode::Char(' ') => {
-                if self.ui.focus == FocusField::UserAdmin {
-                    self.ui.new_user_admin = !self.ui.new_user_admin;
-                }
+            KeyCode::Char(' ') if self.ui.focus == FocusField::UserAdmin => {
+                self.ui.new_user_admin = !self.ui.new_user_admin;
             }
             KeyCode::Char(c) => match self.ui.focus {
                 FocusField::RootPassword => self.ui.root_password.push(c),
@@ -1019,15 +1154,11 @@ impl TuiApp {
 
     fn handle_network_input(&mut self, key: KeyCode) {
         match key {
-            KeyCode::Enter | KeyCode::Right => {
-                if self.ui.focus != FocusField::Hostname {
-                    self.navigate_next();
-                }
+            KeyCode::Enter | KeyCode::Right if self.ui.focus != FocusField::Hostname => {
+                self.navigate_next();
             }
-            KeyCode::Left => {
-                if self.ui.focus != FocusField::Hostname {
-                    self.navigate_back();
-                }
+            KeyCode::Left if self.ui.focus != FocusField::Hostname => {
+                self.navigate_back();
             }
             KeyCode::Tab => {
                 self.ui.focus = match self.ui.focus {
@@ -1036,15 +1167,11 @@ impl TuiApp {
                     _ => FocusField::Hostname,
                 };
             }
-            KeyCode::Char(' ') => {
-                if self.ui.focus == FocusField::UseDhcp {
-                    self.ui.use_dhcp = !self.ui.use_dhcp;
-                }
+            KeyCode::Char(' ') if self.ui.focus == FocusField::UseDhcp => {
+                self.ui.use_dhcp = !self.ui.use_dhcp;
             }
-            KeyCode::Char(c) => {
-                if self.ui.focus == FocusField::Hostname {
-                    self.ui.hostname.push(c);
-                }
+            KeyCode::Char(c) if self.ui.focus == FocusField::Hostname => {
+                self.ui.hostname.push(c);
             }
             KeyCode::Backspace => {
                 if self.ui.focus == FocusField::Hostname {
@@ -1159,10 +1286,8 @@ impl TuiApp {
 
     fn handle_installing_input(&mut self, key: KeyCode) {
         match key {
-            KeyCode::Up => {
-                if self.ui.log_scroll > 0 {
-                    self.ui.log_scroll -= 1;
-                }
+            KeyCode::Up if self.ui.log_scroll > 0 => {
+                self.ui.log_scroll -= 1;
             }
             KeyCode::Down => {
                 self.ui.log_scroll += 1;
@@ -1278,6 +1403,7 @@ impl TuiApp {
     fn render_step_content(&mut self, frame: &mut Frame, area: Rect) {
         match self.current_step {
             InstallStep::Welcome => self.render_welcome(frame, area),
+            InstallStep::InstallSource => self.render_install_source(frame, area),
             InstallStep::HardwareDetection => self.render_hardware(frame, area),
             InstallStep::ProfileSelection => self.render_profile(frame, area),
             InstallStep::KernelSelection => self.render_kernel(frame, area),
@@ -1290,6 +1416,92 @@ impl TuiApp {
             InstallStep::Summary => self.render_summary(frame, area),
             InstallStep::Installing => self.render_installing(frame, area),
             InstallStep::Complete => self.render_complete(frame, area),
+        }
+    }
+
+    fn render_install_source(&mut self, frame: &mut Frame, area: Rect) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(5), // Mode selector
+                Constraint::Length(3), // Channel URL
+                Constraint::Length(3), // Ref
+                Constraint::Min(3),    // Info
+            ])
+            .split(area);
+
+        // Mode selector: two mutually-exclusive options.
+        let selected_marker = |on: bool| if on { "(*) " } else { "( ) " };
+        let mode_lines = vec![
+            Line::from(Span::styled(
+                format!(
+                    "{}Build from source",
+                    selected_marker(!self.ui.use_ostree_image)
+                ),
+                if !self.ui.use_ostree_image {
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                },
+            )),
+            Line::from(Span::styled(
+                format!(
+                    "{}Install pre-built image (ostree)",
+                    selected_marker(self.ui.use_ostree_image)
+                ),
+                if self.ui.use_ostree_image {
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                },
+            )),
+        ];
+        let mode = Paragraph::new(mode_lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Install Source (Up/Down or Space to toggle)")
+                .border_style(if self.ui.focus == FocusField::InstallSourceMode {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default().fg(Color::Cyan)
+                }),
+        );
+        frame.render_widget(mode, chunks[0]);
+
+        if self.ui.use_ostree_image {
+            let url = TextInput::new(&self.ui.ostree_channel_url, "Channel URL")
+                .focused(self.ui.focus == FocusField::OstreeChannelUrl);
+            frame.render_widget(url, chunks[1]);
+
+            let branch = TextInput::new(&self.ui.ostree_ref, "Ref")
+                .focused(self.ui.focus == FocusField::OstreeRef);
+            frame.render_widget(branch, chunks[2]);
+
+            let info = Paragraph::new(vec![
+                Line::from(""),
+                Line::from(
+                    "Deploys a signed, pre-built ostree image. Profile and kernel are baked",
+                ),
+                Line::from("into the image, so those steps are skipped."),
+            ])
+            .style(Style::default().fg(Color::DarkGray))
+            .wrap(Wrap { trim: true });
+            frame.render_widget(info, chunks[3]);
+        } else {
+            let info = Paragraph::new(vec![
+                Line::from(""),
+                Line::from(
+                    "Compiles a rootfs from source with Buck2, tailored to the profile, kernel,",
+                ),
+                Line::from("and hardware you select in the following steps."),
+            ])
+            .style(Style::default().fg(Color::DarkGray))
+            .wrap(Wrap { trim: true });
+            frame.render_widget(info, chunks[1]);
         }
     }
 
@@ -1551,14 +1763,16 @@ impl TuiApp {
 
         // Render in 2 columns (column-major order)
         let num_cols = 2u16;
-        let num_rows = (des.len() as u16 + num_cols - 1) / num_cols;
+        let num_rows = (des.len() as u16).div_ceil(num_cols);
         let col_width = inner.width / num_cols;
 
         for (i, de) in des.iter().enumerate() {
             let col = i as u16 / num_rows;
             let row = i as u16 % num_rows;
 
-            if row >= inner.height { continue; }
+            if row >= inner.height {
+                continue;
+            }
 
             let is_selected = i == selected_idx;
             let marker = if is_selected { "(*)" } else { "( )" };
@@ -1573,16 +1787,17 @@ impl TuiApp {
                 Style::default()
             };
 
-            let prefix = if is_selected && is_focused { ">> " } else { "   " };
+            let prefix = if is_selected && is_focused {
+                ">> "
+            } else {
+                "   "
+            };
             let text = format!("{}{} {}", prefix, marker, de.name());
             let x = inner.x + col * col_width;
             let y = inner.y + row;
 
             let line = Line::from(Span::styled(text, style));
-            frame.render_widget(
-                Paragraph::new(line),
-                Rect::new(x, y, col_width, 1),
-            );
+            frame.render_widget(Paragraph::new(line), Rect::new(x, y, col_width, 1));
         }
 
         // Show description of selected item below the grid
@@ -1655,9 +1870,21 @@ impl TuiApp {
 
     fn render_audio_subsystem_list(&mut self, frame: &mut Frame, area: Rect) {
         let audio_options = [
-            (AudioSubsystem::PipeWire, "PipeWire", "Modern multimedia server (recommended)"),
-            (AudioSubsystem::PulseAudio, "PulseAudio", "Traditional Linux audio server"),
-            (AudioSubsystem::Alsa, "ALSA only", "Basic kernel-level audio (minimal)"),
+            (
+                AudioSubsystem::PipeWire,
+                "PipeWire",
+                "Modern multimedia server (recommended)",
+            ),
+            (
+                AudioSubsystem::PulseAudio,
+                "PulseAudio",
+                "Traditional Linux audio server",
+            ),
+            (
+                AudioSubsystem::Alsa,
+                "ALSA only",
+                "Basic kernel-level audio (minimal)",
+            ),
         ];
         let selected_idx = self.ui.audio_list_state.selected().unwrap_or(0);
         let is_focused = self.ui.focus == FocusField::AudioSelection;
@@ -1682,7 +1909,9 @@ impl TuiApp {
         frame.render_widget(block, area);
 
         for (i, (_subsys, name, desc)) in audio_options.iter().enumerate() {
-            if i as u16 >= inner.height { break; }
+            if i as u16 >= inner.height {
+                break;
+            }
 
             let is_selected = i == selected_idx;
             let marker = if is_selected { "(*)" } else { "( )" };
@@ -1697,7 +1926,11 @@ impl TuiApp {
                 Style::default()
             };
 
-            let prefix = if is_selected && is_focused { ">> " } else { "   " };
+            let prefix = if is_selected && is_focused {
+                ">> "
+            } else {
+                "   "
+            };
             let line = Line::from(vec![
                 Span::styled(format!("{}{} {}", prefix, marker, name), style),
                 Span::styled(format!("  {}", desc), Style::default().fg(Color::DarkGray)),
@@ -1817,7 +2050,7 @@ impl TuiApp {
             .constraints([
                 Constraint::Length(3), // Filesystem (compact inline)
                 Constraint::Length(3), // Encryption (compact inline)
-                Constraint::Min(3),   // Password fields / description
+                Constraint::Min(3),    // Password fields / description
             ])
             .split(chunks[1]);
 
@@ -1989,10 +2222,8 @@ impl TuiApp {
                 .get(enc_idx)
                 .map(|e| e.description())
                 .unwrap_or("");
-            let desc_para = Paragraph::new(Span::styled(
-                enc_desc,
-                Style::default().fg(Color::DarkGray),
-            ));
+            let desc_para =
+                Paragraph::new(Span::styled(enc_desc, Style::default().fg(Color::DarkGray)));
             frame.render_widget(desc_para, right_chunks[2]);
         }
     }
@@ -2329,9 +2560,25 @@ impl TuiApp {
             .map(|d| format!("{} ({})", d.device, self.config.disk_layout.name()))
             .unwrap_or_else(|| "Manual configuration".to_string());
 
-        let summary_items = vec![
-            ("Profile", self.config.profile.category().to_string()),
-            ("Kernel", self.config.kernel_channel.name().to_string()),
+        let mut summary_items: Vec<(&str, String)> = Vec::new();
+        match &self.config.install_source {
+            InstallSource::SourceBuild => {
+                summary_items.push(("Source", "Build from source".to_string()));
+                // Profile and kernel only apply to a source build.
+                summary_items.push(("Profile", self.config.profile.category().to_string()));
+                summary_items.push(("Kernel", self.config.kernel_channel.name().to_string()));
+            }
+            InstallSource::OstreeImage {
+                channel_url,
+                branch,
+            } => {
+                summary_items.push((
+                    "Source",
+                    format!("Pre-built image ({} @ {})", channel_url, branch),
+                ));
+            }
+        }
+        summary_items.extend([
             ("Target Disk", disk_info),
             ("Bootloader", self.config.bootloader.as_str().to_string()),
             (
@@ -2343,7 +2590,7 @@ impl TuiApp {
             ("Hostname", self.config.network.hostname.clone()),
             ("Timezone", self.config.timezone.timezone.clone()),
             ("Locale", self.config.locale.locale.clone()),
-        ];
+        ]);
 
         let summary_widget = InfoBox::new("Installation Summary", summary_items);
         frame.render_widget(summary_widget, chunks[0]);
@@ -2547,7 +2794,12 @@ impl TuiApp {
 }
 
 /// Run the TUI installer
-pub fn run_tui_installer(target: String, dry_run: bool, buckos_build_path: PathBuf) -> Result<()> {
+pub fn run_tui_installer(
+    target: String,
+    dry_run: bool,
+    buckos_build_path: PathBuf,
+    install_source: Option<InstallSource>,
+) -> Result<()> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -2556,7 +2808,7 @@ pub fn run_tui_installer(target: String, dry_run: bool, buckos_build_path: PathB
     let mut terminal = Terminal::new(backend)?;
 
     // Create app and run
-    let mut app = TuiApp::new(target, dry_run, buckos_build_path);
+    let mut app = TuiApp::new(target, dry_run, buckos_build_path, install_source);
 
     // Initialize focus for first step
     app.ui.focus = FocusField::List;
