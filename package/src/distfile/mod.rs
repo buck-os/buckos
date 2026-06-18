@@ -313,7 +313,7 @@ impl DistfileManager {
     /// Get mirrors sorted by priority
     fn get_sorted_mirrors(&self) -> Vec<&Mirror> {
         let mut mirrors: Vec<_> = self.config.mirrors.iter().filter(|m| m.enabled).collect();
-        mirrors.sort_by(|a, b| b.priority.cmp(&a.priority));
+        mirrors.sort_by_key(|b| std::cmp::Reverse(b.priority));
         mirrors
     }
 

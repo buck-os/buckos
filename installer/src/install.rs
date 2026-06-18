@@ -414,7 +414,7 @@ fn unmount_disk_partitions(disk_device: &str) -> anyhow::Result<()> {
     );
 
     // Sort mount points by depth (deepest first)
-    mount_points_to_unmount.sort_by(|a, b| b.0.matches('/').count().cmp(&a.0.matches('/').count()));
+    mount_points_to_unmount.sort_by_key(|b| std::cmp::Reverse(b.0.matches('/').count()));
 
     for (mount_point, device) in &mount_points_to_unmount {
         tracing::info!("Unmounting: {} ({})", mount_point, device);
@@ -2370,8 +2370,7 @@ rootfs(
             tracing::debug!("buck2 --show-output exit status: {:?}", show_output.status);
             let rootfs_path = output_str
                 .lines()
-                .filter(|line| !line.trim().is_empty())
-                .next_back()
+                .rfind(|line| !line.trim().is_empty())
                 .and_then(|line| line.split_whitespace().nth(1))
                 .ok_or_else(|| {
                     anyhow::anyhow!(
@@ -2732,8 +2731,7 @@ rootfs(
                                     let output_str = String::from_utf8_lossy(&show_out.stdout);
                                     if let Some(pkg_path) = output_str
                                         .lines()
-                                        .filter(|l| !l.trim().is_empty())
-                                        .next_back()
+                                        .rfind(|l| !l.trim().is_empty())
                                         .and_then(|l| l.split_whitespace().nth(1))
                                     {
                                         let pkg_src = config.buckos_build_path.join(pkg_path);

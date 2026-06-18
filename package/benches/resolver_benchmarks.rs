@@ -16,7 +16,7 @@ fn create_mock_package(name: &str, version: &str, dep_count: usize) -> PackageIn
     let mut dependencies = Vec::new();
     for i in 0..dep_count {
         dependencies.push(Dependency {
-            package: PackageId::new("sys-libs", &format!("dep-{}", i)),
+            package: PackageId::new("sys-libs", format!("dep-{}", i)),
             version: VersionSpec::Any,
             slot: None,
             use_flags: UseCondition::Always,
@@ -43,6 +43,8 @@ fn create_mock_package(name: &str, version: &str, dep_count: usize) -> PackageIn
         buck_target: format!("//packages/{}", name),
         size: 1024 * 1024,
         installed_size: 10 * 1024 * 1024,
+        required_use: String::new(),
+        blockers: Vec::new(),
     }
 }
 
@@ -54,13 +56,16 @@ fn setup_resolver() -> (
 ) {
     let temp_dir = TempDir::new().unwrap();
     let db = PackageDb::open(temp_dir.path()).unwrap();
+    #[allow(clippy::arc_with_non_send_sync)]
     let db = Arc::new(RwLock::new(db));
 
-    let mut config = Config::default();
-    config.root = temp_dir.path().to_path_buf();
-    config.db_path = temp_dir.path().to_path_buf();
-    config.cache_dir = temp_dir.path().join("cache");
-    config.buck_repo = temp_dir.path().join("repos");
+    let config = Config {
+        root: temp_dir.path().to_path_buf(),
+        db_path: temp_dir.path().to_path_buf(),
+        cache_dir: temp_dir.path().join("cache"),
+        buck_repo: temp_dir.path().join("repos"),
+        ..Default::default()
+    };
 
     let repos = Arc::new(RepositoryManager::new(&config).unwrap());
     let resolver = DependencyResolver::new(db.clone(), repos.clone());
@@ -78,7 +83,7 @@ fn bench_resolve_simple(c: &mut Criterion) {
             dep_count,
             |b, &dep_count| {
                 b.to_async(&rt).iter(|| async {
-                    let (_temp, _db, _repos, resolver) = setup_resolver();
+                    let (_temp, _db, _repos, _resolver) = setup_resolver();
                     let _pkg = create_mock_package("test-package", "1.0.0", dep_count);
 
                     // Note: This is a simplified benchmark as we can't easily mock the repository
@@ -173,7 +178,7 @@ fn bench_dependency_matching(c: &mut Criterion) {
 }
 
 fn bench_sat_solver_setup(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
+    let _rt = Runtime::new().unwrap();
     let mut group = c.benchmark_group("sat_solver");
 
     for var_count in [10, 50, 100, 200].iter() {

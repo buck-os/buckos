@@ -1053,7 +1053,7 @@ impl TuiApp {
                     self.navigate_next();
                 }
             }
-            KeyCode::Right => {
+            KeyCode::Right
                 if !matches!(
                     self.ui.focus,
                     FocusField::RootPassword
@@ -1062,11 +1062,11 @@ impl TuiApp {
                         | FocusField::FullName
                         | FocusField::UserPassword
                         | FocusField::UserPasswordConfirm
-                ) {
-                    self.navigate_next();
-                }
+                ) =>
+            {
+                self.navigate_next();
             }
-            KeyCode::Left => {
+            KeyCode::Left
                 if !matches!(
                     self.ui.focus,
                     FocusField::RootPassword
@@ -1075,9 +1075,9 @@ impl TuiApp {
                         | FocusField::FullName
                         | FocusField::UserPassword
                         | FocusField::UserPasswordConfirm
-                ) {
-                    self.navigate_back();
-                }
+                ) =>
+            {
+                self.navigate_back();
             }
             KeyCode::Tab => {
                 self.ui.focus = match self.ui.focus {
@@ -1092,10 +1092,8 @@ impl TuiApp {
                     _ => FocusField::RootPassword,
                 };
             }
-            KeyCode::Char(' ') => {
-                if self.ui.focus == FocusField::UserAdmin {
-                    self.ui.new_user_admin = !self.ui.new_user_admin;
-                }
+            KeyCode::Char(' ') if self.ui.focus == FocusField::UserAdmin => {
+                self.ui.new_user_admin = !self.ui.new_user_admin;
             }
             KeyCode::Char(c) => match self.ui.focus {
                 FocusField::RootPassword => self.ui.root_password.push(c),
@@ -1156,15 +1154,11 @@ impl TuiApp {
 
     fn handle_network_input(&mut self, key: KeyCode) {
         match key {
-            KeyCode::Enter | KeyCode::Right => {
-                if self.ui.focus != FocusField::Hostname {
-                    self.navigate_next();
-                }
+            KeyCode::Enter | KeyCode::Right if self.ui.focus != FocusField::Hostname => {
+                self.navigate_next();
             }
-            KeyCode::Left => {
-                if self.ui.focus != FocusField::Hostname {
-                    self.navigate_back();
-                }
+            KeyCode::Left if self.ui.focus != FocusField::Hostname => {
+                self.navigate_back();
             }
             KeyCode::Tab => {
                 self.ui.focus = match self.ui.focus {
@@ -1173,15 +1167,11 @@ impl TuiApp {
                     _ => FocusField::Hostname,
                 };
             }
-            KeyCode::Char(' ') => {
-                if self.ui.focus == FocusField::UseDhcp {
-                    self.ui.use_dhcp = !self.ui.use_dhcp;
-                }
+            KeyCode::Char(' ') if self.ui.focus == FocusField::UseDhcp => {
+                self.ui.use_dhcp = !self.ui.use_dhcp;
             }
-            KeyCode::Char(c) => {
-                if self.ui.focus == FocusField::Hostname {
-                    self.ui.hostname.push(c);
-                }
+            KeyCode::Char(c) if self.ui.focus == FocusField::Hostname => {
+                self.ui.hostname.push(c);
             }
             KeyCode::Backspace => {
                 if self.ui.focus == FocusField::Hostname {
@@ -1296,10 +1286,8 @@ impl TuiApp {
 
     fn handle_installing_input(&mut self, key: KeyCode) {
         match key {
-            KeyCode::Up => {
-                if self.ui.log_scroll > 0 {
-                    self.ui.log_scroll -= 1;
-                }
+            KeyCode::Up if self.ui.log_scroll > 0 => {
+                self.ui.log_scroll -= 1;
             }
             KeyCode::Down => {
                 self.ui.log_scroll += 1;
@@ -1775,7 +1763,7 @@ impl TuiApp {
 
         // Render in 2 columns (column-major order)
         let num_cols = 2u16;
-        let num_rows = (des.len() as u16 + num_cols - 1) / num_cols;
+        let num_rows = (des.len() as u16).div_ceil(num_cols);
         let col_width = inner.width / num_cols;
 
         for (i, de) in des.iter().enumerate() {

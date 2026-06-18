@@ -75,8 +75,10 @@ mod config_tests {
 
     #[test]
     fn test_config_system_path_custom_root() {
-        let mut config = Config::default();
-        config.root = PathBuf::from("/mnt/newroot");
+        let config = Config {
+            root: PathBuf::from("/mnt/newroot"),
+            ..Default::default()
+        };
         let path = config.system_path("/etc/passwd");
         assert_eq!(path, PathBuf::from("/mnt/newroot/etc/passwd"));
     }
@@ -413,9 +415,9 @@ mod resolve_operations {
         let opts = InstallOptions::default();
         let result = pm.resolve_packages(&packages, &opts).await;
         // Should handle gracefully (empty or error)
-        match result {
-            Ok(resolution) => assert!(resolution.packages.is_empty()),
-            Err(_) => (), // Error is also acceptable
+        // Err is also acceptable
+        if let Ok(resolution) = result {
+            assert!(resolution.packages.is_empty());
         }
     }
 }

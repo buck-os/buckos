@@ -613,7 +613,7 @@ impl ServiceManager {
     /// Get boot analysis (blame) - services sorted by boot time.
     pub async fn get_boot_blame(&self) -> Vec<BootTiming> {
         let mut timings = self.boot_timings.read().await.clone();
-        timings.sort_by(|a, b| b.duration_ms.cmp(&a.duration_ms));
+        timings.sort_by_key(|b| std::cmp::Reverse(b.duration_ms));
         timings
     }
 

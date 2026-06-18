@@ -216,13 +216,10 @@ impl DependencyResolver {
         // Map packages to SAT variables
         let mut var_map: HashMap<(PackageId, semver::Version), Lit> = HashMap::new();
         let mut reverse_map: HashMap<Lit, (PackageId, semver::Version)> = HashMap::new();
-        let mut next_var = 1isize;
-
-        for pkg in &all_packages {
+        for (next_var, pkg) in (1isize..).zip(all_packages.iter()) {
             let lit = Lit::from_dimacs(next_var);
             var_map.insert((pkg.id.clone(), pkg.version.clone()), lit);
             reverse_map.insert(lit, (pkg.id.clone(), pkg.version.clone()));
-            next_var += 1;
         }
 
         // Add constraints

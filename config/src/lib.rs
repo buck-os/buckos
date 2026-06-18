@@ -13,7 +13,7 @@
 //! - [`keywords`]: Keyword acceptance (ACCEPT_KEYWORDS)
 //! - [`license`]: License acceptance (ACCEPT_LICENSE)
 //! - [`mask`]: Package masking/unmasking
-//! - [`env`]: Environment variable configuration
+//! - [`mod@env`]: Environment variable configuration
 //! - [`repos`]: Repository configuration (repos.conf)
 //! - [`profile`]: System profile configuration
 //! - [`sets`]: Package sets (@world, @system, custom)

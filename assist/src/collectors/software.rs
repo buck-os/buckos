@@ -163,7 +163,7 @@ impl SoftwareInfo {
 
         // Sort by memory and get top 10
         let mut top_by_memory = process_list;
-        top_by_memory.sort_by(|a, b| b.memory.cmp(&a.memory));
+        top_by_memory.sort_by_key(|b| std::cmp::Reverse(b.memory));
         top_by_memory.truncate(10);
 
         ProcessSummary {

@@ -45,7 +45,7 @@ struct Args {
     dry_run: bool,
 
     /// Install a signed ostree image from this channel URL instead of building
-    /// from source (e.g. https://repo.buckos.org/ostree).
+    /// from source (e.g. <https://repo.buckos.org/ostree>).
     #[arg(long)]
     ostree_channel: Option<String>,
 

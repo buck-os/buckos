@@ -154,7 +154,7 @@ impl GlsaChecker {
 
         // Sort by date (newest first)
         self.advisories
-            .sort_by(|a, b| b.announced.cmp(&a.announced));
+            .sort_by_key(|b| std::cmp::Reverse(b.announced));
 
         Ok(())
     }
@@ -472,7 +472,7 @@ impl GlsaChecker {
         }
 
         // Sort by severity (most severe first)
-        vulnerable.sort_by(|a, b| b.severity.cmp(&a.severity));
+        vulnerable.sort_by_key(|b| std::cmp::Reverse(b.severity));
 
         VulnCheckResult {
             vulnerable,

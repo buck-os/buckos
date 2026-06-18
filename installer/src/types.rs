@@ -1214,9 +1214,10 @@ pub struct LocaleConfig {
 }
 
 /// Where the installed system's root comes from.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum InstallSource {
     /// Build a rootfs from source with Buck2 and lay it down (default).
+    #[default]
     SourceBuild,
     /// Deploy a signed ostree image pulled from a channel (SPEC-006 §5.5).
     OstreeImage {
@@ -1225,12 +1226,6 @@ pub enum InstallSource {
         /// Channel ref to deploy (e.g. `buckos/x86_64/stable`).
         branch: String,
     },
-}
-
-impl Default for InstallSource {
-    fn default() -> Self {
-        InstallSource::SourceBuild
-    }
 }
 
 impl InstallSource {

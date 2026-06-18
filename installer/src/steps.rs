@@ -933,7 +933,7 @@ pub fn render_profile_selection(
 
             // 2-column grid for desktop environments
             let all_des = DesktopEnvironment::all();
-            let half = (all_des.len() + 1) / 2;
+            let half = all_des.len().div_ceil(2);
             ui.columns(2, |cols| {
                 for (i, de) in all_des.iter().enumerate() {
                     let col = if i < half { &mut cols[0] } else { &mut cols[1] };
@@ -966,7 +966,7 @@ pub fn render_profile_selection(
 
             // 2-column grid for handheld devices
             let all_devices = HandheldDevice::all();
-            let half = (all_devices.len() + 1) / 2;
+            let half = all_devices.len().div_ceil(2);
             ui.columns(2, |cols| {
                 for (i, device) in all_devices.iter().enumerate() {
                     let col = if i < half { &mut cols[0] } else { &mut cols[1] };

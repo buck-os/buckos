@@ -98,7 +98,7 @@ impl NewsManager {
         }
 
         // Sort by date (newest first)
-        self.items.sort_by(|a, b| b.posted.cmp(&a.posted));
+        self.items.sort_by_key(|b| std::cmp::Reverse(b.posted));
 
         Ok(())
     }

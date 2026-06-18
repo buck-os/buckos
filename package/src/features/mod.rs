@@ -961,8 +961,10 @@ mod tests {
 
     #[test]
     fn test_distcc_job_calculation() {
-        let mut config = DistccConfig::default();
-        config.hosts = vec!["host1/8".to_string(), "host2/4".to_string()];
+        let config = DistccConfig {
+            hosts: vec!["host1/8".to_string(), "host2/4".to_string()],
+            ..Default::default()
+        };
 
         assert_eq!(config.calculate_jobs(), 12);
     }
