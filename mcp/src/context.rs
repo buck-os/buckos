@@ -115,11 +115,16 @@ mod tests {
     async fn create_test_context() -> (McpServerContext, tempfile::TempDir) {
         let temp_dir = tempfile::TempDir::new().expect("Failed to create temp dir");
         let temp_path = temp_dir.path();
+        // Dummy buck2 so PackageManager::new() succeeds even when buck2 isn't
+        // installed on the host (e.g. CI). BuckIntegration only checks `.exists()`.
+        let buck_path = temp_path.join("buck2");
+        std::fs::write(&buck_path, b"#!/bin/sh\nexit 0\n").expect("write dummy buck2");
         let config = Config {
             root: temp_path.join("root"),
             db_path: temp_path.join("db"),
             cache_dir: temp_path.join("cache"),
             buck_repo: temp_path.join("repo"),
+            buck_path,
             ..Config::default()
         };
         let pm = PackageManager::new(config).await.unwrap();
