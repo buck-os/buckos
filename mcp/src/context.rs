@@ -109,16 +109,27 @@ mod tests {
     use super::*;
     use buckos_package::Config;
 
-    async fn create_test_context() -> McpServerContext {
-        let config = Config::default();
+    /// Build a context backed by a temporary directory so the test never
+    /// touches (and gets `PermissionDenied` on) system paths in CI. The
+    /// returned `TempDir` must be kept alive for the duration of the test.
+    async fn create_test_context() -> (McpServerContext, tempfile::TempDir) {
+        let temp_dir = tempfile::TempDir::new().expect("Failed to create temp dir");
+        let temp_path = temp_dir.path();
+        let config = Config {
+            root: temp_path.join("root"),
+            db_path: temp_path.join("db"),
+            cache_dir: temp_path.join("cache"),
+            buck_repo: temp_path.join("repo"),
+            ..Config::default()
+        };
         let pm = PackageManager::new(config).await.unwrap();
         let exec_context = ExecutionContext::detect();
-        McpServerContext::new(pm, exec_context)
+        (McpServerContext::new(pm, exec_context), temp_dir)
     }
 
     #[tokio::test]
     async fn test_confirmation_token_creation() {
-        let ctx = create_test_context().await;
+        let (ctx, _temp_dir) = create_test_context().await;
 
         let op = PendingOperation::Install {
             packages: vec!["bash".to_string()],
@@ -131,7 +142,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_confirmation_token_consumption() {
-        let ctx = create_test_context().await;
+        let (ctx, _temp_dir) = create_test_context().await;
 
         let op = PendingOperation::Install {
             packages: vec!["bash".to_string()],
@@ -151,7 +162,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_permission() {
-        let ctx = create_test_context().await;
+        let (ctx, _temp_dir) = create_test_context().await;
 
         // Read-only operations should always be allowed
         assert!(ctx.check_permission("package_search").is_ok());
